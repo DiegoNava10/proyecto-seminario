@@ -17,6 +17,9 @@ def analizar():
             return jsonify({"error": "Faltan datos en la solicitud"}), 400
         datos = contenido["data"]
         ip = request.json.get("ip")
+        
+        print(f"[DEBUG] Vector recibido: {datos}")
+        print(f"[DEBUG] Longitud del vector: {len(datos)}")
 
         resultado = "normal" if modelo.predict([np.array(datos)])[0] == 0 else "ataque"
 
