@@ -3,10 +3,13 @@ from flask_cors import CORS
 import numpy as np
 from joblib import load
 import psycopg2
+import pickle
 
 app = Flask(__name__)
 CORS(app)
 modelo = load("../ia/modelo_ids.joblib")
+with open("../ia/encoders.pkl", "rb") as f:
+    encoders = pickle.load(f)
 
 @app.route("/analizar", methods=["POST"])
 def analizar(): 
@@ -20,8 +23,18 @@ def analizar():
         
         print(f"[DEBUG] Vector recibido: {datos}")
         print(f"[DEBUG] Longitud del vector: {len(datos)}")
+        #prediccion = modelo.predict([np.array(datos)])
+        #print(f"[DEBUG] Prediccion raw: {prediccion}")
+        
+        vector = []
+        for i, val in enumerate(datos):
+            if i in encoders:
+                val = encoders [i].transform([val])[0]
+            else:
+                val = float(val)
+            vector.append(val)
 
-        resultado = "normal" if modelo.predict([np.array(datos)])[0] == 0 else "ataque"
+        resultado = "normal" if modelo.predict([vector])[0] == 0 else "ataque"
 
         conn = psycopg2.connect(dbname="cia_db", user="admin", password="admin@123", host="localhost")
         cur = conn.cursor()
