@@ -26,7 +26,7 @@ label_encoders = {}
 for col in X.columns:
     if X[col].dtype == 'object':
         le = LabelEncoder()
-        X[col] = LabelEncoder().fit_transform(X[col])
+        X[col] = le.fit_transform(X[col])
         label_encoders[col] = le
 
 modelo = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42)

@@ -11,6 +11,7 @@ modelo = load("../ia/modelo_ids.joblib")
 with open("../ia/encoders.pkl", "rb") as f:
     encoders = pickle.load(f)
 
+
 @app.route("/analizar", methods=["POST"])
 def analizar(): 
     try:
