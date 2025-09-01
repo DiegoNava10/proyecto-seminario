@@ -23,4 +23,4 @@ clf = RandomForestClassifier(n_estimators=100, random_state=42)
 clf.fit(x,y)
 
 dump(clf, "modelo_ids.joblib")
-print("Modelo guardado como modelo")_
+print("Modelo guardado como modelo")
