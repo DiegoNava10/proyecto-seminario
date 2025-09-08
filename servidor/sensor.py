@@ -152,7 +152,7 @@ def process_packet(packet):
 
 # --- Funciones de Ayuda ---
 def get_service_name(port):
-    services = {80: "http", 443: "https", 21: "ftp", 22: "ssh", 25: "smtp"}
+    services = {80: "http", 443: "http", 21: "ftp", 22: "ssh", 25: "smtp"}
     return services.get(port, "other")
 
 def get_flag_name(flags_set):

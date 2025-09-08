@@ -4,6 +4,7 @@ import numpy as np
 from joblib import load
 import pickle
 import traceback
+import psycopg2
 
 app = Flask(__name__)
 CORS(app)
@@ -63,14 +64,29 @@ def analizar():
         
         print(f"[RESULTADO] IP: {ip}, Predicción: {resultado.upper()}")
 
-        # --- Opcional: Conexión a Base de Datos ---
-        # conn = psycopg2.connect(dbname="cia_db", user="admin", password="admin@admin123", host="localhost")
-        # cur = conn.cursor()
-        # cur.execute("CREATE TABLE IF NOT EXISTS resultados (id SERIAL PRIMARY KEY, timestamp TIMESTAMPTZ DEFAULT NOW(), ip TEXT, resultado TEXT, vector TEXT);")
-        # cur.execute("INSERT INTO resultados (ip, resultado, vector) VALUES (%s, %s, %s);", (ip, resultado, str(datos)))
-        # conn.commit()
-        # cur.close()
-        # conn.close()
+        try:
+            conn = psycopg2.connect(dbname="cia_db", user="admin", password="admin@123", host="localhost")
+            cur = conn.cursor()
+            # Creamos la tabla si no existe, con más detalles
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS resultados (
+                    id SERIAL PRIMARY KEY, 
+                    timestamp TIMESTAMPTZ DEFAULT NOW(), 
+                    ip_origen TEXT, 
+                    resultado TEXT, 
+                    vector_datos TEXT
+                );
+            """)
+            # Insertamos el nuevo registro
+            cur.execute(
+                "INSERT INTO resultados (ip_origen, resultado, vector_datos) VALUES (%s, %s, %s);", 
+                (ip, resultado, str(datos))
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as db_error:
+            print(f"[ERROR DB] No se pudo escribir en la base de datos: {db_error}")
 
         return jsonify({"resultado": resultado})
     
