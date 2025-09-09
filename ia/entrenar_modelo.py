@@ -1,93 +1,95 @@
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from joblib import dump
-import pickle
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import gc
+import os
 
-print("[INFO] Cargando y preparando el dataset...")
+print("[INFO] Iniciando el protocolo de entrenamiento (Modo Especialista Definitivo)...")
 
-col_names = ["duration","protocol_type","service","flag","src_bytes","dst_bytes","land",
-             "wrong_fragment","urgent","hot","num_failed_logins","logged_in","num_compromised",
-             "root_shell","su_attempted","num_root","num_file_creations","num_shells",
-             "num_access_files","num_outbound_cmds","is_host_login","is_guest_login","count",
-             "srv_count","serror_rate","srv_serror_rate","rerror_rate","srv_rerror_rate",
-             "same_srv_rate","diff_srv_rate","srv_diff_host_rate","dst_host_count",
-             "dst_host_srv_count","dst_host_same_srv_rate","dst_host_diff_srv_rate",
-             "dst_host_same_src_port_rate","dst_host_srv_diff_host_rate","dst_host_serror_rate",
-             "dst_host_srv_serror_rate","dst_host_rerror_rate","dst_host_srv_rerror_rate",
-             "label","difficulty"]
+# --- Rutas ---
+PROCESSED_DATA_PATH = "data_processed/"
+TRAIN_FILE = os.path.join(PROCESSED_DATA_PATH, "dataset_entrenamiento.csv")
+TEST_FILE = os.path.join(PROCESSED_DATA_PATH, "dataset_prueba.csv")
 
-data = pd.read_csv("https://raw.githubusercontent.com/defcom17/NSL_KDD/master/KDDTrain+.txt", 
-                   header=None, names=col_names)
+# --- ### EL CONTRATO DEFINITIVO: Las características que nuestro sensor SÍ puede calcular ### ---
+FEATURES_WE_CAN_COMPUTE = [
+    'Dst Port', 'Protocol', 'Flow Duration', 'Tot Fwd Pkts', 'Tot Bwd Pkts',
+    'TotLen Fwd Pkts', 'TotLen Bwd Pkts', 'Fwd Pkt Len Max', 'Fwd Pkt Len Min',
+    'Fwd Pkt Len Mean', 'Fwd Pkt Len Std', 'Flow IAT Mean', 'Flow IAT Std',
+    'Flow IAT Max', 'Flow IAT Min', 'Fwd Pkts/s', 'Bwd Pkts/s', 'Label'
+]
+print(f"[INFO] El modelo se entrenará como un especialista en {len(FEATURES_WE_CAN_COMPUTE)-1} características clave.")
 
-# --- ### SOLUCIÓN: DICCIONARIO DE ATAQUES INTEGRADO ### ---
-# En lugar de descargar el archivo, definimos el mapeo directamente aquí.
-# Esto hace que nuestro script sea robusto y autosuficiente.
-print("[INFO] Usando diccionario de ataques integrado.")
-attack_map = {
-    'back': 'dos', 'buffer_overflow': 'u2r', 'ftp_write': 'r2l', 'guess_passwd': 'r2l',
-    'imap': 'r2l', 'ipsweep': 'probe', 'land': 'dos', 'loadmodule': 'u2r',
-    'multihop': 'r2l', 'neptune': 'dos', 'nmap': 'probe', 'perl': 'u2r', 'phf': 'r2l',
-    'pod': 'dos', 'portsweep': 'probe', 'rootkit': 'u2r', 'satan': 'probe',
-    'smurf': 'dos', 'spy': 'r2l', 'teardrop': 'dos', 'warezclient': 'r2l', 'warezmaster': 'r2l'
-}
-# -----------------------------------------------------------
+try:
+    print(f"[INFO] Cargando y filtrando el dataset de entrenamiento...")
+    # Leemos solo las columnas que nos interesan para ahorrar memoria
+    df_train = pd.read_csv(TRAIN_FILE, usecols=lambda column: column in FEATURES_WE_CAN_COMPUTE, low_memory=False)
+    
+    print(f"[INFO] Cargando y filtrando el dataset de prueba...")
+    df_test = pd.read_csv(TEST_FILE, usecols=lambda column: column in FEATURES_WE_CAN_COMPUTE, low_memory=False)
 
-data['attack_type'] = data['label'].apply(lambda r: attack_map.get(r, 'normal'))
-data = data.drop(['difficulty', 'num_outbound_cmds'], axis=1)
+    # Consolidamos en un solo DataFrame para la limpieza final
+    df = pd.concat([df_train, df_test], ignore_index=True)
+    del df_train, df_test
+    gc.collect()
 
-print("[INFO] Realizando alineación quirúrgica para ataques de sondeo...")
-data.loc[data['attack_type'] == 'probe', 'service'] = 'other'
+except Exception as e:
+    print(f"\n[ERROR] Ocurrió un error al cargar los datasets: {e}")
+    print("        Asegúrate de haber ejecutado 'preparar_dataset.py' primero.")
+    exit()
 
-servicios_comunes = ['http', 'smtp', 'ftp', 'ftp_data', 'ssh', 'private', 'domain_u', 'other']
-data['service'] = data['service'].apply(lambda x: x if x in servicios_comunes else 'other')
-data = data.drop('attack_type', axis=1)
+# --- Preprocesamiento ---
+print("[INFO] Realizando preprocesamiento...")
+df.rename(columns={'Label': 'Label_text'}, inplace=True, errors='ignore')
+df['Label'] = df['Label_text'].apply(lambda x: 0 if str(x).strip() == 'BENIGN' else 1)
+df = df.drop(['Label_text'], axis=1, errors='ignore')
 
-y = data['label'].apply(lambda x: 0 if x == 'normal' else 1)
-X = data.drop('label', axis=1)
+X = df.drop('Label', axis=1)
+y = df['Label']
+feature_names = X.columns.tolist()
+del df
+gc.collect()
 
-label_encoders = {}
-for i, col in enumerate(X.columns):
-    if X[col].dtype == 'object':
-        le = LabelEncoder()
-        X[col] = le.fit_transform(X[col])
-        label_encoders[i] = le
-
-X_train_df, X_test_df, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-X_train = X_train_df.to_numpy()
-X_test = X_test_df.to_numpy()
-
+# --- División y Escalado ---
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
 X_test = scaler.transform(X_test)
 
-print("[INFO] Entrenando el modelo RandomForest con datos quirúrgicamente alineados...")
-modelo = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42, n_jobs=-1)
+# --- Entrenamiento ---
+print(f"\n[INFO] Entrenando el modelo especialista con {X_train.shape[0]} registros...")
+modelo = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42, n_jobs=-1, max_depth=30, min_samples_leaf=5)
 modelo.fit(X_train, y_train)
 
-print("\n[INFO] Evaluando el nuevo modelo...")
+# --- Evaluación ---
+print("\n[INFO] Evaluando el modelo especialista...")
 y_pred = modelo.predict(X_test)
-print("\n--- Reporte de Clasificación ---")
-print(classification_report(y_test, y_pred, target_names=['Normal', 'Ataque']))
+
+accuracy = accuracy_score(y_test, y_pred)
+print(f"\n--- Calidad del Modelo Especialista ---")
+print(f"Porcentaje de Acertividad (Accuracy): {accuracy * 100:.2f}%")
+print("\n--- Reporte de Clasificación Detallado ---")
+print(classification_report(y_test, y_pred, target_names=['Benigno', 'Ataque']))
 
 cm = confusion_matrix(y_test, y_pred)
-print("\n--- Matriz de Confusión ---")
-print(cm)
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Normal', 'Ataque'], yticklabels=['Normal', 'Ataque'])
-plt.title('Matriz de Confusión (Modelo Definitivo)')
+plt.figure(figsize=(10, 8))
+sns.heatmap(cm, annot=True, fmt='d', cmap='viridis')
+plt.title('Matriz de Confusión (Modelo Especialista)')
+plt.xlabel('Predicción')
+plt.ylabel('Realidad')
 plt.show()
 
-print("\n[INFO] Guardando modelo y preprocesadores definitivos...")
-dump(modelo, "modelo_ids.joblib")
-with open("encoders.pkl", "wb") as f:
-    pickle.dump(label_encoders, f)
-dump(scaler, 'scaler.joblib')
+# --- Guardado de Artefactos ---
+print("\n[INFO] Guardando artefactos del modelo especialista...")
+dump(modelo, "modelo_ids_moderno.joblib")
+dump(scaler, "scaler_moderno.joblib")
+dump(feature_names, "features_moderno.joblib")
 
-print("[SUCCESS] Proceso completado.")
+print("\n[SUCCESS] Proceso completado. Tu IA especialista está lista.")
 
