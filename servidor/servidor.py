@@ -2,65 +2,48 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import numpy as np
 from joblib import load
-import pickle
 import traceback
 import psycopg2
+import pandas as pd
 
 app = Flask(__name__)
 CORS(app)
 
-print("[INFO] Cargando modelo, codificadores y escalador...")
+# --- Carga de Artefactos de IA Especialista ---
+print("[INFO] Cargando artefactos del modelo especialista...")
 try:
-    modelo = load("../ia/modelo_ids.joblib")
-    with open("../ia/encoders.pkl", "rb") as f:
-        encoders = pickle.load(f)
-    scaler = load("../ia/scaler.joblib")
-    print("[INFO] Artefactos cargados correctamente. Servidor listo.")
+    modelo = load("../ia/modelo_ids_moderno.joblib")
+    scaler = load("../ia/scaler_moderno.joblib")
+    feature_names = load("../ia/features_moderno.joblib")
+    print(f"[INFO] Artefactos cargados. El modelo es un especialista en {len(feature_names)} características.")
 except FileNotFoundError as e:
     print(f"[ERROR] No se pudo encontrar un archivo de modelo necesario: {e}")
-    print("[ERROR] Asegúrate de haber ejecutado la última versión de 'entrenar_modelo.py'.")
+    print("[ERROR] Asegúrate de haber ejecutado 'entrenar_modelo_definitivo.py' en la carpeta /ia.")
     exit()
 
-@app.route("/analizar", methods=["POST"])
+@app.route("/analizar_moderno", methods=["POST"])
 def analizar(): 
     try:
         contenido = request.get_json(force=True)
         if not contenido or "data" not in contenido or "ip" not in contenido:
             return jsonify({"error": "Faltan datos en la solicitud"}), 400
         
-        datos = contenido["data"]
+        vector_recibido = contenido["data"]
         ip = contenido.get("ip")
         
-        if len(datos) != 40:
-            error_msg = f"Error de dimensión. Se esperaban 40 características, pero se recibieron {len(datos)}."
+        # --- Verificación de Consistencia con el Contrato ---
+        if len(vector_recibido) != len(feature_names):
+            error_msg = f"Error de dimensión. El modelo espera {len(feature_names)} características, pero se recibieron {len(vector_recibido)}."
             print(f"[ERROR] {error_msg}")
             return jsonify({"error": error_msg}), 400
 
-        vector_numerico = []
-        for i, val in enumerate(datos):
-            if i in encoders:
-                encoder = encoders[i]
-                # Comprueba si el valor es conocido por el codificador
-                if str(val) in encoder.classes_:
-                    valor_transformado = encoder.transform([str(val)])[0]
-                    vector_numerico.append(valor_transformado)
-                else:
-                    # Si la clase es desconocida (ej. 'https'), la mapea a 'other'
-                    print(f"[INFO] Valor desconocido '{val}' para columna {i}. Mapeando a 'other'.")
-                    try:
-                        # Intenta transformar 'other', que es una categoría común
-                        valor_transformado = encoder.transform(['other'])[0]
-                        vector_numerico.append(valor_transformado)
-                    except ValueError:
-                        # Si 'other' tampoco existe, usa 0 como último recurso
-                        vector_numerico.append(0)
-            else:
-                # Si no es una columna categórica, la convierte a float
-                vector_numerico.append(float(val))
-
-        vector_final = scaler.transform([np.array(vector_numerico)])
-        prediccion_numerica = modelo.predict(vector_final)[0]
-        resultado = "normal" if prediccion_numerica == 0 else "ataque"
+        # --- Preprocesamiento y Predicción ---
+        # Creamos un DataFrame con los nombres de columna correctos para que el scaler funcione
+        vector_df = pd.DataFrame([vector_recibido], columns=feature_names)
+        vector_scaled = scaler.transform(vector_df)
+        
+        prediccion_numerica = modelo.predict(vector_scaled)[0]
+        resultado = "Benigno" if prediccion_numerica == 0 else "Ataque"
         
         print(f"[RESULTADO] IP: {ip}, Predicción: {resultado.upper()}")
 
@@ -95,5 +78,6 @@ def analizar():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    print("API de Detección de Intrusos corriendo en http://0.0.0.0:5000")
+    print("API de Detección de Intrusos (Modelo Especialista) corriendo en http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000)
+
