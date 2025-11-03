@@ -2,12 +2,10 @@ import pandas as pd
 import numpy as np
 import os
 
-print("[INFO] Iniciando el protocolo de diagnóstico forense...")
+print("[INFO] Iniciando el protocolo de diagnóstico ...")
 
-# --- ### CONFIGURACIÓN: APUNTA AL ARCHIVO SOSPECHOSO ### ---
-# Asegúrate de que este archivo esté en tu carpeta 'data_subset/'
+# Archivo a diagnosticar debe estar en la carpeta 'data_subset/'
 ARCHIVO_A_DIAGNOSTICAR = "data_subset/03-02-2018.csv"
-# ----------------------------------------------------------------
 
 if not os.path.exists(ARCHIVO_A_DIAGNOSTICAR):
     print(f"[ERROR] No se encontró el archivo a diagnosticar en la ruta: {ARCHIVO_A_DIAGNOSTICAR}")
@@ -21,7 +19,7 @@ try:
     df = pd.read_csv(ARCHIVO_A_DIAGNOSTICAR, low_memory=False)
     print(f"  -> Lectura inicial exitosa. Filas crudas: {len(df):,}")
 
-    # --- Replicamos el proceso de limpieza EXACTO del preparador ---
+    # Replicamos el proceso de limpieza
     df.columns = df.columns.str.strip()
     df.rename(columns={'Destination Port': 'Dst Port'}, inplace=True, errors='ignore')
     
@@ -39,7 +37,6 @@ try:
     
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     
-    # --- ### EL MOMENTO DE LA VERDAD: ANÁLISIS DE DATOS FALTANTES ### ---
     print("\n--- REPORTE FORENSE DE VALORES NULOS (NaN) ---")
     
     # Contamos cuántos valores nulos hay en cada columna ANTES de eliminarlos
@@ -47,7 +44,7 @@ try:
     null_counts = null_counts[null_counts > 0].sort_values(ascending=False)
 
     if null_counts.empty:
-        print("¡Increíble! No se encontraron valores nulos después de la conversión.")
+        print("No se encontraron valores nulos después de la conversión.")
     else:
         print("Se encontraron valores nulos en las siguientes columnas:")
         for col, count in null_counts.items():

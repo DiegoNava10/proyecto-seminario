@@ -7,21 +7,19 @@ from collections import defaultdict
 import threading
 from joblib import load
 import os
-import sys # Importamos sys para leer los argumentos de la línea de comandos
+import sys
 
-# --- El modo ahora se controla por argumentos, no editando el archivo ---
+# Argumentos para calibracion desde terminal
 MODO_CALIBRACION = "--calibrar" in sys.argv
-# ---------------------------------------------------------------------
-
-# --- Configuración ---
+# Configuración
 ANALYSIS_SERVER_URL = "http://127.0.0.1:5000/analizar_moderno"
 FLOW_TIMEOUT = 60
 CALIBRATION_FILE = "calibracion_local.csv"
 
-# --- "Memoria" del Sensor ---
+# Memoria del Sensor
 active_flows = {}
 
-# --- Carga de la Lista de Características ---
+# Carga de la Lista de Características
 try:
     FEATURE_NAMES = load("../ia/features_moderno.joblib")
     print(f"[INFO] Sensor iniciado. El 'contrato' de {len(FEATURE_NAMES)} características ha sido cargado.")
@@ -33,8 +31,7 @@ def finalize_flow(flow_key, reason="timeout"):
     if flow_key not in active_flows: return
     flow = active_flows.pop(flow_key)
 
-    # --- Cálculo de Características ---
-    # (Esta lógica no cambia)
+    # Cálculo de Características
     flow['Flow Duration'] = max(1, (flow['last_seen'] - flow['start_time']) * 1_000_000)
     flow['Tot Fwd Pkts'] = len(flow['fwd_pkt_lengths'])
     flow['Tot Bwd Pkts'] = len(flow['bwd_pkt_lengths'])
@@ -58,7 +55,7 @@ def finalize_flow(flow_key, reason="timeout"):
     
     vector = [flow.get(feature.strip(), 0) for feature in FEATURE_NAMES]
     
-    # --- Decisión de Modo ---
+    # Como se ejecutara el sensor
     if MODO_CALIBRACION:
         df_vector = pd.DataFrame([vector], columns=FEATURE_NAMES)
         header = not os.path.exists(CALIBRATION_FILE)
@@ -81,7 +78,6 @@ def finalize_flow(flow_key, reason="timeout"):
             pass
 
 def process_packet(packet):
-    # (Esta lógica no cambia)
     if not packet.haslayer(IP): return
     src_ip, dst_ip = packet[IP].src, packet[IP].dst
     proto = packet[IP].proto
@@ -107,7 +103,6 @@ def process_packet(packet):
         finalize_flow(flow_key, reason="TCP FIN/RST")
 
 def check_flow_timeouts():
-    # (Esta lógica no cambia)
     while True:
         time.sleep(10)
         current_time = time.time()
@@ -117,7 +112,7 @@ def check_flow_timeouts():
 
 if __name__ == "__main__":
     if MODO_CALIBRACION:
-        print("[AVISO] Sensor en MODO DE CALIBRACIÓN. Recolectando tráfico local benigno...")
+        print("[AVISO] Sensor en MODO DE CALIBRACIÓN. Recolectando tráfico local ...")
         if os.path.exists(CALIBRATION_FILE):
             os.remove(CALIBRATION_FILE)
             print(f"[INFO] Archivo de calibración anterior '{CALIBRATION_FILE}' eliminado.")

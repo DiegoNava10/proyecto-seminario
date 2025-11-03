@@ -5,21 +5,21 @@ import glob
 from sklearn.model_selection import train_test_split
 import gc
 
-print("[INFO] Iniciando el protocolo de preparación de datos (Modo Filtrado Definitivo)...")
+print("[INFO] Iniciando el protocolo de preparación de datos...")
 
-# --- Rutas ---
+# Rutas
 RAW_DATA_PATH = "data_subset/"
 PROCESSED_DATA_PATH = "data_processed/"
 TRAIN_FILE = os.path.join(PROCESSED_DATA_PATH, "dataset_entrenamiento.csv")
 TEST_FILE = os.path.join(PROCESSED_DATA_PATH, "dataset_prueba.csv")
 
-# --- Limpieza previa ---
+# Limpieza previa
 for f in [TRAIN_FILE, TEST_FILE]:
     if os.path.exists(f):
         os.remove(f)
 print("[INFO] Archivos de entrenamiento/prueba anteriores eliminados.")
 
-# --- Procesamiento y Consolidación ---
+# Procesamiento y Consolidación
 csv_files = glob.glob(os.path.join(RAW_DATA_PATH, "*.csv"))
 if not csv_files:
     print(f"[ERROR] No se encontraron archivos CSV en la carpeta '{RAW_DATA_PATH}'.")
@@ -55,7 +55,7 @@ for file in csv_files:
     except Exception as e:
         print(f"     [AVISO] Ocurrió un error leyendo {file}, será omitido. Error: {e}")
 
-# --- Unimos toda la evidencia en una sola mesa ---
+# Unimos todos los bloques procesados
 print(f"\n[INFO] Consolidando {len(df_list)} DataFrames limpios...")
 try:
     df = pd.concat(df_list, ignore_index=True)
@@ -64,9 +64,8 @@ try:
     print(f"[INFO] Consolidación completada. Total de filas limpias: {len(df):,}")
 
     label_col_name = 'Label' if 'Label' in df.columns else ' Label'
-    
-    # --- ### SOLUCIÓN DEFINITIVA: FILTRADO DE CLASES ÚNICAS ### ---
-    print("\n[INFO] Buscando y filtrando clases con un solo miembro (anomalías estadísticas)...")
+ 
+    print("\n[INFO] Buscando y filtrando clases con un solo miembro...")
     label_counts = df[label_col_name].value_counts()
     single_member_classes = label_counts[label_counts == 1].index.tolist()
     
@@ -78,7 +77,7 @@ try:
     else:
         print("  -> No se encontraron clases con un solo miembro. ¡Excelente!")
 
-    # --- Separación Estratificada Final ---
+    # Separación Estratificada Final
     print("\n[INFO] Realizando separación estratificada en entrenamiento (80%) y prueba (20%)...")
     
     train_df, test_df = train_test_split(
