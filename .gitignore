@@ -18,10 +18,13 @@
 .env.test.local
 .env.production.local
 
+/.env
+/.venv/
+/ia/data_subset/
+/ia/data_processed/
+/servidor/calibracion_local.csv
+/ia/*.joblib
+__pycache__/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-
-.env    
-/ia/data_subset 
