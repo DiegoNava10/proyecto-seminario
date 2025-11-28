@@ -5,6 +5,13 @@ import traceback
 import pandas as pd
 import os
 import sys
+import json
+import base64
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.exceptions import InvalidSignature
 
 script_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(script_dir)
@@ -28,15 +35,47 @@ except FileNotFoundError as e:
     print("        Asegúrate de haber ejecutado 'recolectar_conexion_local.py' y 'entrenar_anomaly_detector.py'.")
     exit()
 
+try:
+    with open("aes_secret.key", "rb") as f:
+        AES_KEY = f.read()
+    with open("sensor_public.pem", "rb") as f:
+        SENSOR_PUBLIC_KEY = serialization.load_pem_public_key(f.read())
+    print("[SEGURIDAD] Llaves criptográficas del sensor cargadas correctamente.")
+except FileNotFoundError:
+    print("[ERROR] Faltan las llaves (aes_secret.key o sensor_public.pem). Ejecuta generar_claves_seguridad.py")
+    exit()
+
 @app.route("/analizar_moderno", methods=["POST"])
 def analizar(): 
     try:
-        contenido = request.get_json(force=True)
-        if not contenido or "data" not in contenido or "ip" not in contenido:
-            return jsonify({"error": "Faltan datos en la solicitud"}), 400
+        paquete_seguro = request.get_json(force=True)
+
+        #Decodificar de Base64
+        nonce = base64.b64decode(paquete_seguro['nonce'])
+        ciphertext = base64.b64decode(paquete_seguro['ciphertext'])
+        signature = base64.b64decode(paquete_seguro['signature'])
+
+        try:
+            SENSOR_PUBLIC_KEY.verify(
+                signature,
+                ciphertext,
+                padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+                hashes.SHA256()
+            )
+        except InvalidSignature:
+            print("[ALERTA SEGURIDAD] Firma digital inválida. Posible intento de suplantación.")
+            return jsonify({"error": "Firma Rechazada"}), 403
         
-        vector_recibido = contenido["data"]
-        ip = contenido.get("ip")
+        #Descifrar datos
+        aesgcm = AESGCM(AES_KEY)
+        data_bytes = aesgcm.decrypt(nonce, ciphertext, None)
+        contenido_original = json.loads(data_bytes.decode('utf-8'))
+
+        vector_recibido = contenido_original["data"]
+        ip = contenido_original.get("ip")
+
+        if vector_recibido is None or ip is None:
+            return jsonify({"error": "Faltan datos en la solicitud"}), 400
         
         if len(vector_recibido) != len(feature_names):
             return jsonify({"error": "Error de dimensión."}), 400
@@ -65,5 +104,4 @@ def analizar():
 
 if __name__ == "__main__":
     print("API de Detección de Intrusos corriendo en http://0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=5000)
-
+    app.run(host="0.0.0.0", port=5000, ssl_context='adhoc')

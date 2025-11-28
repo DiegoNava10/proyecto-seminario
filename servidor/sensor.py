@@ -8,13 +8,34 @@ import threading
 from joblib import load
 import os
 import sys
+import json
+import base64
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 
 # Argumentos para calibracion desde terminal
 MODO_CALIBRACION = "--calibrar" in sys.argv
 # Configuración
-ANALYSIS_SERVER_URL = "http://127.0.0.1:5000/analizar_moderno"
+ANALYSIS_SERVER_URL = "https://127.0.0.1:5000/analizar_moderno"
 FLOW_TIMEOUT = 60
 CALIBRATION_FILE = "calibracion_local.csv"
+
+
+#Carga de llaves criptográficas
+try:
+    with open("aes_secret.key", "rb") as f:
+        AES_KEY = f.read()
+    with open("sensor_private.pem", "rb") as f:
+        PRIVATE_KEY = serialization.load_pem_private_key(f.read(), password=None)
+    print("[SEGURIDAD] Llaves criptográficas cargadas correctamente.")
+except FileNotFoundError:
+    if not MODO_CALIBRACION:
+        print("[ERROR] Faltan las llaves (aes_secret.key o sensor_private.pem). Ejecuta generar_claves_seguridad.py")
+        exit()
 
 # Memoria del Sensor
 active_flows = {}
@@ -26,6 +47,29 @@ try:
 except FileNotFoundError:
     print("[ERROR] No se encontró 'features_moderno.joblib'. Ejecuta el script de entrenamiento primero.")
     exit()
+
+def encrypt_and_sign(payload_dict):
+    """Cifra los datos con AES y firma el paquete con RSA"""
+    #Convertir datos a bytes
+    data_bytes = json.dumps(payload_dict).encode('utf-8')
+    
+    #Cifra con AES
+    aesgcm = AESGCM(AES_KEY)
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, data_bytes, None)
+    
+    #Firmar el cifrado firma digital
+    signature = PRIVATE_KEY.sign(
+        ciphertext,
+        padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+        hashes.SHA256()
+    )
+    
+    return {
+        "nonce": base64.b64encode(nonce).decode('utf-8'),
+        "ciphertext": base64.b64encode(ciphertext).decode('utf-8'),
+        "signature": base64.b64encode(signature).decode('utf-8')
+    }
 
 def finalize_flow(flow_key, reason="timeout"):
     if flow_key not in active_flows: return
@@ -55,7 +99,7 @@ def finalize_flow(flow_key, reason="timeout"):
     
     vector = [flow.get(feature.strip(), 0) for feature in FEATURE_NAMES]
     
-    # Como se ejecutara el sensor
+    #Logica de envio o guardado
     if MODO_CALIBRACION:
         df_vector = pd.DataFrame([vector], columns=FEATURE_NAMES)
         header = not os.path.exists(CALIBRATION_FILE)
@@ -63,13 +107,14 @@ def finalize_flow(flow_key, reason="timeout"):
         print(f"  -> Vector de tráfico local guardado para calibración...", end='\r')
     else:
         payload = {"ip": flow_key[0][0], "data": vector}
-        print(f"FLUJO FINALIZADO ({reason}). Enviando vector de IP {flow_key[0][0]}...")
+        payload_secure = encrypt_and_sign(payload)
+        print(f"FLUJO FINALIZADO ({reason}). Enviando vector cifrado de IP {flow_key[0][0]}...")
         try:
-            response = requests.post(ANALYSIS_SERVER_URL, json=payload)
+            response = requests.post(ANALYSIS_SERVER_URL, json=payload_secure, verify=False)
             if response.status_code == 200:
                 result = response.json()
                 if result.get('resultado') == 'Ataque':
-                    print(f"  -> 🚨 ALERTA: POSIBLE ATAQUE DETECTADO DESDE {flow_key[0][0]} 🚨")
+                    print(f"  -> ALERTA: POSIBLE ATAQUE DETECTADO DESDE {flow_key[0][0]} ")
                 else:
                     print(f"  -> Resultado: {result.get('resultado', 'error')}")
             else:
