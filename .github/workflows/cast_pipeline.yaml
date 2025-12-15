@@ -46,4 +46,5 @@ jobs:
       env:
         MONGO_URI: ${{ secrets.MONGO_URI_SECRET }}
       run: |
+        pip install pymongo dnspython
         python -c "import os, pymongo; client = pymongo.MongoClient(os.environ['MONGO_URI']); print('¡Conexión a MongoDB exitosa desde la nube!')"
