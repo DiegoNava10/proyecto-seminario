@@ -9,6 +9,7 @@ modelo = load("../ia/modelo_ids.joblib")
 
 logging.basicConfig(filename="registro.log", level=logging.INFO)
 
+#adwadasdwasd
 @app.route("/analizar", methods=["POST"])
 def analizar(): 
     contenido = request.json
@@ -19,10 +20,10 @@ def analizar():
     resultado = "normal" if pred == 0 else "ataque"
     logging.info(f"[{ip}] -> {resultado}")
 
-   if resultado == "ataque":
+    if resultado == "ataque":
        os.system(f"iptables -A INPUT -s {ip} -j DROP")
 
     return jsonify({"resultado": resultado})
 
 if __name__=="__main__":
-    print(
+    print()
