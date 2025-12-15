@@ -8,7 +8,6 @@ from bson.objectid import ObjectId
 
 MONGO_URI = "mongodb+srv://octaviogutierrez:Joto1@clustercast.4eqghnt.mongodb.net/?appName=ClusterCAST"
 
-# Inicia el cliente de MongoDB
 try:
     client = pymongo.MongoClient(MONGO_URI,server_api=ServerApi('1'))   
     # Ping para conexion  
