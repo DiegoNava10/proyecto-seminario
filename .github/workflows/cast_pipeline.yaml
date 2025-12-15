@@ -1,0 +1,46 @@
+name: CAST Security Pipeline (CI)
+
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  prueba-de-integridad:
+    name: Test en Entorno Windows Cloud
+    runs-on: windows-latest
+
+    steps:
+    - name: Obtener código del repositorio
+      uses: actions/checkout@v4
+
+    - name: Instalar Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Instalar dependencias
+      run: |
+        python -m pip install --upgrade pip
+        if (Test-Path requirements.txt) { pip install -r requirements.txt }
+        pip install flake8
+
+    - name: Generar Claves Temporales para el Test
+      run: |
+        python generar_claves_seguridad.py
+
+    - name: Análisis de Sintaxis (Linting)
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+    - name: Verificar Importación de Módulos
+      run: |
+        python -c "import pandas; import joblib; from cryptography.hazmat.primitives import hashes; print('¡Librerías críticas cargadas correctamente!')"
+
+    - name: Test de Conexión a Mongo Atlas
+      env:
+        MONGO_URI: ${{ secrets.MONGO_URI_SECRET }}
+      run: |
+        python -c "import os, pymongo; client = pymongo.MongoClient(os.environ['MONGO_URI']); print('¡Conexión a MongoDB exitosa desde la nube!')"
