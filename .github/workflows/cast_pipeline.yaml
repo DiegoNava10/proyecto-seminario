@@ -32,11 +32,15 @@ jobs:
 
     - name: Análisis de Sintaxis (Linting)
       run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.venv,ia/.venv,venv,env
 
     - name: Verificar Importación de Módulos
       run: |
         python -c "import pandas; import joblib; from cryptography.hazmat.primitives import hashes; print('¡Librerías críticas cargadas correctamente!')"
+
+    - name: Test de Lógica Criptográfica
+      run: |
+        python test_funcional.py
 
     - name: Test de Conexión a Mongo Atlas
       env:
